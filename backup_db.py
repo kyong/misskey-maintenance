@@ -16,13 +16,15 @@ AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 AWS_DEFAULT_REGION = os.environ.get("AWS_DEFAULT_REGION")
 BUCKET_NAME = os.environ.get("BUCKET_NAME")
 BACKUP_DIR = os.environ.get("BACKUP_DIR")
+POSTGRES_CONTAINER_NAME = os.environ.get("POSTGRES_CONTAINER_NAME")
+
 
 # データベースのバックアップ
 current_date = datetime.now().strftime('%Y-%m-%d')
 backup_file = os.path.join(BACKUP_DIR, f"backup_{current_date}.dump")
 
 dump_command = [
-    "docker", "exec", "-i", "YOUR_POSTGRES_CONTAINER_NAME",
+    "docker", "exec", "-i", POSTGRES_CONTAINER_NAME,
     "pg_dump",
     f"-U{DB_USER}",
     f"-hlocalhost",
@@ -32,13 +34,21 @@ dump_command = [
 ]
 subprocess.run(" ".join(dump_command), shell=True)
 
-# AWS S3へのアップロード
-s3 = boto3.client(
-    's3',
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    region_name=AWS_DEFAULT_REGION
-)
+destination = input("Choose backup destination (S3/local): ").strip().lower()
 
-with open(backup_file, "rb") as f:
-    s3.upload_fileobj(f, BUCKET_NAME, f"backup_{current_date}.dump")
+# AWS S3へのアップロード
+if destination == "s3":
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        region_name=AWS_DEFAULT_REGION
+    )
+
+    with open(backup_file, "rb") as f:
+        s3.upload_fileobj(f, BUCKET_NAME, f"backup_{current_date}.dump")
+
+elif destination == "local":
+    print(f"Backup saved to {backup_file}")
+else:
+    print("Invalid choice. Backup not saved to S3 or local.")
