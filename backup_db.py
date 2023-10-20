@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import argparse
 
 # 引数の解析
-parser = argparse.ArgumentParser(description='Restore backup for PostgreSQL in Docker.')
+parser = argparse.ArgumentParser(description='Backup for PostgreSQL in Docker.')
 parser.add_argument('source', choices=['s3', 'local'], help='Backup source: S3 or local')
 args = parser.parse_args()
 
