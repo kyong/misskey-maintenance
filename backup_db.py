@@ -3,6 +3,13 @@ import subprocess
 from datetime import datetime
 import boto3
 from dotenv import load_dotenv
+import argparse
+
+# 引数の解析
+parser = argparse.ArgumentParser(description='Backup for PostgreSQL in Docker.')
+parser.add_argument('source', choices=['s3', 'local'], help='Backup source: S3 or local')
+args = parser.parse_args()
+
 
 # .envファイルから環境変数をロード
 load_dotenv()
@@ -34,10 +41,9 @@ dump_command = [
 ]
 subprocess.run(" ".join(dump_command), shell=True)
 
-destination = input("Choose backup destination (S3/local): ").strip().lower()
 
 # AWS S3へのアップロード
-if destination == "s3":
+if args.source == "s3":
     s3 = boto3.client(
         's3',
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -48,7 +54,7 @@ if destination == "s3":
     with open(backup_file, "rb") as f:
         s3.upload_fileobj(f, BUCKET_NAME, f"backup_{current_date}.dump")
 
-elif destination == "local":
+elif args.source == "local":
     print(f"Backup saved to {backup_file}")
 else:
     print("Invalid choice. Backup not saved to S3 or local.")
