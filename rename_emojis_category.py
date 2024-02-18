@@ -71,10 +71,11 @@ def update_emoji_category(emojis, old_category, new_category, dryrun):
 def update_emoji(emoji):
     url = f'{instance_url}/api/admin/emoji/update'
     payload = {
-        'i': access_token,
-        'emojiId': emoji['id'],
-        'category': emoji['category']
-    }
+        'i': access_token
+    } | emoji 
+
+    payload['category'] = new_category
+    
     try:
         response = requests.post(url, json=payload)
         response.raise_for_status()
