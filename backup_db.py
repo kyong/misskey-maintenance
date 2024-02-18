@@ -4,6 +4,7 @@ from datetime import datetime
 import boto3
 from dotenv import load_dotenv
 import argparse
+from datetime import datetime, timedelta
 
 # 引数の解析
 parser = argparse.ArgumentParser(description='Backup for PostgreSQL in Docker.')
@@ -58,3 +59,16 @@ elif args.source == "local":
     print(f"Backup saved to {backup_file}")
 else:
     print("Invalid choice. Backup not saved to S3 or local.")
+
+# 古いバックアップファイルの削除
+# ここでは、バックアップファイルを3日分しか残さないようにしています。
+# この日数は、必要に応じて変更してください。
+old_date = datetime.now() - timedelta(days=3)
+old_date_str = old_date.strftime('%Y-%m-%d')
+old_backup_file = os.path.join(BACKUP_DIR, f"backup_{old_date_str}.dump")
+if os.path.exists(old_backup_file):
+    os.remove(old_backup_file)
+    print(f"Removed old backup file: {old_backup_file}")
+else:
+    print(f"No old backup file found: {old_backup_file}")
+    

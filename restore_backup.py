@@ -21,9 +21,10 @@ DB_NAME = os.getenv("DB_NAME")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 POSTGRES_IMAGE = "postgres:15-alpine"  # 使用するPostgreSQLのイメージのバージョンを適切に設定してください。
 TEMP_CONTAINER_NAME = "temp_restore_container"
+AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION")
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+BUCKET_NAME = os.getenv("BUCKET_NAME")
 
 def check_postgres_ready():
     cmd = [
@@ -36,6 +37,32 @@ def check_postgres_ready():
     except subprocess.CalledProcessError:
         return False
 
+# データベースをクリーンな状態にする
+def clean_db():
+    drop_db_command = [
+        "docker", "exec", TEMP_CONTAINER_NAME,
+        "psql", "-U", DB_USER, "-d", "postgres", "-c",
+        f"DROP DATABASE IF EXISTS {DB_NAME};"
+    ]
+    subprocess.run(drop_db_command)
+
+    create_db_command = [
+        "docker", "exec", TEMP_CONTAINER_NAME,
+        "psql", "-U", DB_USER, "-d", "postgres", "-c",
+        f"CREATE DATABASE {DB_NAME};"
+    ]
+    subprocess.run(create_db_command)
+
+# awscliをインストール
+def install_awscli():
+    subprocess.run([
+        "docker", "exec", TEMP_CONTAINER_NAME,
+        "apk", "add", "--no-cache", "python3", "py3-pip"
+    ])
+    subprocess.run([
+        "docker", "exec", TEMP_CONTAINER_NAME,
+        "pip3", "install", "awscli"
+    ])
 
 # 一時的なコンテナを作成
 container_id = subprocess.check_output([
@@ -53,24 +80,8 @@ while not check_postgres_ready():
     time.sleep(5)
 
 
-# データベースをクリーンな状態にする
-drop_db_command = [
-    "docker", "exec", TEMP_CONTAINER_NAME,
-    "psql", "-U", DB_USER, "-d", "postgres", "-c",
-    f"DROP DATABASE IF EXISTS {DB_NAME};"
-]
-subprocess.run(drop_db_command)
-
-create_db_command = [
-    "docker", "exec", TEMP_CONTAINER_NAME,
-    "psql", "-U", DB_USER, "-d", "postgres", "-c",
-    f"CREATE DATABASE {DB_NAME};"
-]
-subprocess.run(create_db_command)
-
-
-
 if args.source == "local":
+    clean_db()
     restore_command = [
         "docker", "exec", TEMP_CONTAINER_NAME,
         "pg_restore", "-U", DB_USER, "-d", DB_NAME, f"/backup/{args.filename}"
@@ -78,17 +89,25 @@ if args.source == "local":
     subprocess.run(restore_command)
 
 elif args.source == "S3":
+    print( f"{BUCKET_NAME}/{args.filename}")
+    install_awscli()
     subprocess.run([
         "docker", "exec", TEMP_CONTAINER_NAME,
-        "aws", "s3", "cp", args.filename, "/backup/s3_backup.dump",
-        "--region", "your_region",  # 必要に応じてAWSのリージョンを設定してください。
-        "--access-key", AWS_ACCESS_KEY_ID,
-        "--secret-access-key", AWS_SECRET_ACCESS_KEY
-    ])
-    subprocess.run([
-        "docker", "exec", TEMP_CONTAINER_NAME,
-        "pg_restore", "-U", DB_USER, "-d", DB_NAME, "/backup/s3_backup.dump"
-    ])
+        "aws", "s3", "cp", f"s3://{BUCKET_NAME}/{args.filename}", "/backup/s3_backup.dump",
+        f"--region={AWS_DEFAULT_REGION}"
+    ], env={
+        "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
+        "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY
+    })
+    # s3からの取得が成功したら、データベースをクリーンな状態にしてからリストア
+    if os.path.exists(f"{BACKUP_DIR}/s3_backup.dump"):
+        clean_db()
+        restore_command = [
+            "docker", "exec", TEMP_CONTAINER_NAME,
+            "pg_restore", "-U", DB_USER, "-d", DB_NAME, "/backup/s3_backup.dump"
+        ]
+        subprocess.run(restore_command)
+
 
 # 一時的なコンテナを停止・削除
 subprocess.run(f"docker stop {TEMP_CONTAINER_NAME}", shell=True)
